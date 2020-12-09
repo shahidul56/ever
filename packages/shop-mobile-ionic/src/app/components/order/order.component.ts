@@ -3,6 +3,8 @@ import {
 	Component,
 	Input,
 	Inject,
+	EventEmitter,
+	Output,
 } from '@angular/core';
 import { Store } from '../../services/store.service';
 import OrderStatus from '@modules/server.common/enums/OrderStatus';
@@ -17,6 +19,10 @@ import {
 	trigger,
 } from '@angular/animations';
 import { DOCUMENT } from '@angular/common';
+import DeliveryType from '@modules/server.common/enums/DeliveryType';
+import { NavController } from '@ionic/angular';
+import { environment } from 'environments/environment';
+import { OrderRouter } from '@modules/client.common.angular2/routers/order-router.service';
 
 @Component({
 	selector: 'e-cu-order',
@@ -33,10 +39,18 @@ import { DOCUMENT } from '@angular/common';
 	]*/
 })
 export class OrderComponent {
+	deletedProductId: string;
+
 	@Input()
 	order: Order;
 	@Input()
 	showDetailsButton: boolean = false;
+
+	@Output()
+	orderChange = new EventEmitter<Order>();
+
+	@Output()
+	onAddComment = new EventEmitter<{ comment: string; productId: string }>();
 
 	get id() {
 		return this.order.id;
@@ -103,6 +117,10 @@ export class OrderComponent {
 		);
 	}
 
+	get inProcessing() {
+		return this.order && this.order.status < OrderStatus.Delivered;
+	}
+
 	get isTakeaway() {
 		return (
 			this.order &&
@@ -112,8 +130,35 @@ export class OrderComponent {
 
 	constructor(
 		@Inject(DOCUMENT) public document: Document,
-		private readonly store: Store
+		private readonly store: Store,
+		public navCtrl: NavController,
+		private orderRouter: OrderRouter
 	) {}
+
+	goToOrder() {
+		if (this.inProcessing && environment.ORDER_INFO_TYPE === 'page') {
+			this.navCtrl.navigateRoot(
+				`${
+					this.store.deliveryType === DeliveryType.Delivery
+						? '/order-info'
+						: '/order-info-takeaway'
+				}`
+			);
+		}
+	}
+
+	async removeProduct(orderId, orderProduct) {
+		await this.orderRouter.removeProducts(orderId, [
+			orderProduct.product._id,
+		]);
+
+		const productIndex = this.order.products.findIndex(
+			(p) => p.id == orderProduct.id
+		);
+		this.order.products[productIndex].price = 0;
+		this.deletedProductId = orderProduct._id;
+		this.orderChange.emit(this.order);
+	}
 
 	private _millisToMinutes(ms) {
 		const minutes = Math.floor(ms / 60000);
